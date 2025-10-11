@@ -1,0 +1,58 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 推送 v 开头的标签时触发，例如 v1.0.0
+  workflow_dispatch: # 允许手动触发工作流
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest # 建议桌面程序使用 Windows 环境
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Test
+      run: dotnet test --verbosity normal --no-build
+
+    - name: Publish for Windows
+      run: |
+        dotnet publish YourConsoleApp/YourConsoleApp.csproj \
+          --configuration Release \
+          --runtime win-x64 \
+          --self-contained true \
+          --output ./publish/win-x64 \
+          -p:PublishSingleFile=true
+      # 重复上述步骤发布其他平台版本，如 linux-x64, osx-x64
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        files: |
+          ./publish/win-x64/*.exe
+          # 添加其他平台的可执行文件，例如：
+          # ./publish/linux-x64/YourConsoleApp
+          # ./publish/osx-x64/YourConsoleApp
