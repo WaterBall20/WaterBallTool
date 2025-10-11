@@ -11,7 +11,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest  # 对于桌面应用，建议使用 Windows runner
+    runs-on: windows-latest
 
     steps:
     - name: Checkout code
@@ -31,5 +31,5 @@ jobs:
     - name: Test
       run: dotnet test --verbosity normal --no-build
 
-    - name: Publish
+    - name: Publish Console App
       run: dotnet publish --configuration Release --output ./publish --no-build
