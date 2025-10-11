@@ -33,7 +33,7 @@ jobs:
 
     - name: Publish for Windows
       run: |
-        dotnet publish YourConsoleApp/YourConsoleApp.csproj \
+        dotnet publish WaterBallTool\WaterBallTool.csproj \
           --configuration Release \
           --runtime win-x64 \
           --self-contained true \
