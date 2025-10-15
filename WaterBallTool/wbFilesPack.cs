@@ -76,23 +76,45 @@ namespace WaterBallTool
         {
             try
             {
-                //包文件流
+
+                /*===临时代码===*/
+                if (onWriteOptimization)
+                {
+                    MWriteLine("写入优化未开发完成，写入优化将禁用", WriteTy.Warn);
+                    onWriteOptimization = false;//关闭写入优化
+                }
+                /*==============*/
+
+                //包文件名
                 string outFileName = outFile.EndsWith(".wbfilespack")? outFile : $"{outFile}.wbfilespack";
 
                 //文件存在且开启写入优化
                 if (File.Exists(outFileName) && onWriteOptimization)
                 {
+                    /*===临时代码提示===*/
+                    MWriteLine("写入优化未开发完成，写入优化将禁用", WriteTy.Warn);
+
                     (FileStream? fileStream, WBFilesPackData_Read? filesPackData, long jsonDataLength, _) = ReadPackData(outFile);
                     MWriteLine("包文件存在且开启写入优化，将打开文件");
-                    
-                    MWriteLine("开发未完成，无法使用");
-                    fileStream?.Flush();
-                    fileStream?.Close();
-                    fileStream?.Dispose();
+                    if (filesPackData.Attribute.SListFile)
+                    {
+                        //写入优化代码
+                        fileStream?.Flush();
+                        fileStream?.Close();
+                        fileStream?.Dispose();
+                        
+                    }
+                    else
+                    {
+                        MWriteLine("此文件的列表数据未分离，暂不支持写入优化，将禁用",WriteTy.Warn);
+                        onWriteOptimization = false;//关闭写入优化
+                    }
                 }
-                else
-                {
-                    using FileStream fileStream = new(outFileName, FileMode.Create, FileAccess.ReadWrite);
+
+                //非写入优化
+                if(!onWriteOptimization)
+{
+                using FileStream fileStream = new(outFileName, FileMode.Create, FileAccess.ReadWrite);
                     MWriteLine("创建包文件并打开");
                     //包列表文件流
                     using FileStream listFileStream = new($"{outFileName}.json", FileMode.Create, FileAccess.ReadWrite);
