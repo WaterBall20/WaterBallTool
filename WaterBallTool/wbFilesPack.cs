@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System.CommandLine;
+using System.IO;
 using System.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -38,7 +39,7 @@ namespace WaterBallTool
             var PackNameArgument = new Argument<string>(name: "包名称", description: "包名称标记", getDefaultValue: () => "");
             var onHashOption = new Option<bool>(name: "--oh", description: "计算哈希（SHA-256），可选", getDefaultValue: () => false);
             var onSListFileOption = new Option<bool>(name: "--os", description: "列表数据分离", getDefaultValue: () => true);
-            var onWriteOptimizationOption = new Option<bool>(name: "--ow", description: "写入优化", getDefaultValue: () => false);
+            var onWriteOptimizationOption = new Option<bool>(name: "--ow", description: "写入优化", getDefaultValue: () => true);
             //命令
             var mCommand = new Command("m", "合成")
                     {
@@ -76,45 +77,140 @@ namespace WaterBallTool
         {
             try
             {
-
-                /*===临时代码===*/
-                if (onWriteOptimization)
-                {
-                    MWriteLine("写入优化未开发完成，写入优化将禁用", WriteTy.Warn);
-                    onWriteOptimization = false;//关闭写入优化
-                }
-                /*==============*/
-
                 //包文件名
                 string outFileName = outFile.EndsWith(".wbfilespack")? outFile : $"{outFile}.wbfilespack";
 
-                //文件存在且开启写入优化
-                if (File.Exists(outFileName) && onWriteOptimization)
+                if (!File.Exists(outFileName)) onWriteOptimization = false;//如果包文件不存在则关闭写入优化
+                //写入优化
+                if (onWriteOptimization)
                 {
-                    /*===临时代码提示===*/
-                    MWriteLine("写入优化未开发完成，写入优化将禁用", WriteTy.Warn);
-
-                    (FileStream? fileStream, WBFilesPackData_Read? filesPackData, long jsonDataLength, _) = ReadPackData(outFile);
+                    (FileStream? fileStream, WBFilesPackData_Read? filesPackDataRead, long jsonDataLength, _) = ReadPackData(outFile);
                     MWriteLine("包文件存在且开启写入优化，将打开文件");
-                    if (filesPackData.Attribute.SListFile)
+                    if(filesPackDataRead != null)
                     {
-                        //写入优化代码
+                        if (filesPackDataRead.Attribute.SListFile)
+                        {
+                            //写入优化代码
+                            WBFilesPackData filesPackData = new WBFilesPackData();
+                            filesPackData.Attribute.Name = packName;
+                            filesPackData.Attribute.OnHash = onHash;
+                            filesPackData.Attribute.SListFile = onSListFile;
+                            //filesPackData.FilesList = filesList;
+                            //列表对比
+                            MWriteLine("开始进行列表对比");
+                            ListComparison(filesPackDataRead.FilesList.FilesList, filesList.FilesList);
+
+                            //比较列表:旧列表，新列表
+                            void ListComparison(List<WBFileInfo_Read> fileInfo_Reads, List<WBFileInfo> filesInfos)
+                            {
+                                //先基于新列表查找
+                                foreach (var item in filesInfos)
+                                {
+                                    int CompareResult = -1;//-1删除，0大小相同，1新增，2修改_大小增加，3修改_大小减少
+                                    WBFileInfo_Read? seekInfo = SeekInfo(item);
+                                    if (seekInfo != null)
+                                    {
+                                        if (seekInfo.IsD)
+                                        {
+                                            if (item.IsD)
+                                            {
+                                                //文件夹时递归
+                                                ListComparison(seekInfo.FilesList, ((WBFilesInfo)item).FilesList);
+                                            }
+
+                                        }
+                                        else
+                                        {
+                                            if (item.IsD)
+                                            {
+                                                MWriteLine($"文件{item.Name}类型发生变化，视为文件删除", WriteTy.Warn);
+                                                CompareResult = -1;
+                                                fileInfo_Reads.Remove(seekInfo);//删除旧文件数据，以减少后续基于旧列表的查找时间
+                                            }
+                                            else
+                                            {
+                                                if (seekInfo.Length == item.Length)
+                                                {
+                                                    //MWriteLine($"文件{item.Name}未发生变化", WriteTy.Info);
+                                                    CompareResult = 0;
+                                                }
+                                                else if (seekInfo.Length < item.Length)
+                                                {
+                                                    MWriteLine($"文件{item.Name}发生变化，大小增加[{DataLengthToString(item.Length - seekInfo.Length)}]", WriteTy.Warn);
+                                                    CompareResult = 2;
+                                                }
+                                                else if (seekInfo.Length > item.Length)
+                                                {
+                                                    MWriteLine($"文件{item.Name}发生变化，大小减少[{DataLengthToString(seekInfo.Length - item.Length)}]", WriteTy.Warn);
+                                                    CompareResult = 3;
+                                                }
+                                                fileInfo_Reads.Remove(seekInfo);//删除旧文件数据，以减少后续基于旧列表的查找时间
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        CompareResult = 1;
+                                        MWriteLine($"文件{item.Name}为新增文件", WriteTy.Warn);
+                                    }
+                                    //在旧列表中寻找
+                                    WBFileInfo_Read SeekInfo(WBFileInfo fileInfo)
+                                    {
+                                        foreach (var item2 in fileInfo_Reads)
+                                        {
+                                            if (item2.Name == item.Name) return item2;
+                                        }
+                                        return null;
+                                    }
+                                }
+                                //再基于旧列表查找，查找被删除的文件
+                                foreach (var item in fileInfo_Reads)
+                                {
+                                    if (!item.IsD)
+                                    {
+                                        MWriteLine($"文件{item.Name}已被删除", WriteTy.Warn);
+                                    }
+
+                                }
+
+                            }
+
+                            MWriteLine("列表对比完成");
+
+
+                            /*===临时代码===*/
+                            if (onWriteOptimization)
+                            {
+                                MWriteLine("写入优化未开发完成，写入优化将禁用", WriteTy.Warn);
+                                onWriteOptimization = false;//关闭写入优化
+                                WriteLine("按任意键继续");
+                                _ = Console.Read();
+                            }
+                            /*==============*/
+
+
+                        }
+                        else
+                        {
+                            MWriteLine("此文件的列表数据未分离，暂不支持写入优化，将禁用", WriteTy.Warn);
+                            onWriteOptimization = false;//关闭写入优化
+                        }
+                        //关闭文件流
                         fileStream?.Flush();
                         fileStream?.Close();
                         fileStream?.Dispose();
-                        
                     }
                     else
                     {
-                        MWriteLine("此文件的列表数据未分离，暂不支持写入优化，将禁用",WriteTy.Warn);
                         onWriteOptimization = false;//关闭写入优化
                     }
+
                 }
 
                 //非写入优化
                 if(!onWriteOptimization)
 {
-                using FileStream fileStream = new(outFileName, FileMode.Create, FileAccess.ReadWrite);
+                    using FileStream fileStream = new(outFileName, FileMode.Create, FileAccess.ReadWrite);
                     MWriteLine("创建包文件并打开");
                     //包列表文件流
                     using FileStream listFileStream = new($"{outFileName}.json", FileMode.Create, FileAccess.ReadWrite);
@@ -403,6 +499,7 @@ namespace WaterBallTool
                 if (fileStream.Read(fileHeader) != FileHeader.Length)
                 {
                     PRWriteLine("文件核心数据不完整，无法继续", WriteTy.Error);
+                    CloseFileStream();
                     return (null, null, 0, null);
                 }
                 PRWriteLine("读取文件头并判断");
@@ -417,6 +514,7 @@ namespace WaterBallTool
                 if (!BetyArrEquals(fileNameBytes, FileNameBytes))
                 {
                     PRWriteLine("文件类型不是水球文件包或不兼容", WriteTy.Error);
+                    CloseFileStream();
                     return (null, null, 0, null);
                 }
                 //文件版本数组
@@ -429,6 +527,7 @@ namespace WaterBallTool
                 if (!BetyArrEquals(fileVersion, FileVersion))
                 {
                     PRWriteLine("文件格式版本不一致，无法兼容", WriteTy.Error);
+                    CloseFileStream();
                     return (null, null, 0, null);
                 }
                 //json文件数据长度字节数组
@@ -444,6 +543,7 @@ namespace WaterBallTool
                 if (fileStream.Read(jsonDataByte) != jsonDataLength)
                 {
                     SWriteLine("文件关键数据不完整，无法继续", WriteTy.Error);
+                    CloseFileStream();
                     return (null, null, 0, null);
                 }
                 //json数据文本
@@ -473,6 +573,7 @@ namespace WaterBallTool
                             if (filesPackData == null)
                             {
                                 PRWriteLine($"此包的列表数据已分离，但分离的列表数据文件（{listFilePath}）数据无法正常解析，无法继续", WriteTy.Error);
+                                CloseFileStream();
                                 return (null, null, 0, null);
                             }
                         }
@@ -481,6 +582,7 @@ namespace WaterBallTool
                     if (!filesPackData.Attribute.Version.IsCompatibility)
                     {
                         PRWriteLine("json数据版本不兼容", WriteTy.Error);
+                        CloseFileStream();
                         return (null, null, 0, null);
                     }
                     if (filesPackData.Attribute.Version.CompatibilityState != 0)
@@ -496,6 +598,13 @@ namespace WaterBallTool
                         return (fileStream, filesPackData, jsonDataLength, fileVersion);
                     }
                 }
+                void CloseFileStream()
+                {
+                    //关闭文件流
+                    fileStream?.Flush();
+                    fileStream?.Close();
+                    fileStream?.Dispose();
+                }
             }
             else
             {
@@ -505,6 +614,8 @@ namespace WaterBallTool
             {
                 Program.WriteLine($"[水球文件包操作器][公共方法][读取包文件数据]{info}", Ty, ex, Progress);
             }
+
+
             return (null, null, 0, null);
         }
 
@@ -1341,8 +1452,6 @@ namespace WaterBallTool
             public Attribute_Read Attribute { get; set; } = new();
             //文件列表
             public WBFilesList_Read FilesList { get; set; } = new();
-            /*---V1---*/
-            //启用哈希计算(V3迁移到属性)
         }
 
         public class Attribute_Read
@@ -1420,21 +1529,16 @@ namespace WaterBallTool
             public string Name { get; set; } = "";
             //长度
             public long Length { get; set; } = 0;
-            /*===V2===*/
             //是文件夹
             public bool IsD { get; set; } = false;
             //当是文件夹时的子文件集合
             public List<WBFileInfo_Read> FilesList { get; set; } = [];
             //所有子文件数(不包括文件夹)
             public int FilesCount { get; set; } = 0;
-
-            /*====包文件专用====*/
             //数据起始位置
             public long DataStartPosition { get; set; } = 0;
-            /*===V1===*/
             //哈希
             public string Hash { get; set; } = "";
-            /*===V4===*/
             //数据位置分段，修改文件后用
             public List<long> DataPosition { get; set; } = [];
         }
@@ -1449,7 +1553,6 @@ namespace WaterBallTool
             public List<WBFileInfo_Read> FilesList { get; set; } = [];
             //总数据大小
             public long DataLength { get; set; } = 0;
-            /*---V2---*/
             //总文件大小
             public int FilesCount
             {

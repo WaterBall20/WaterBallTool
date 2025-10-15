@@ -24,9 +24,10 @@ namespace WaterBallTool
                             {
                                 (string info, WriteTy Ty, Exception? ex, double Progress) = WriteLineList[0];
                                 mWriteLine(info, Ty, ex, Progress);
+                                if(Ty == WriteTy.Progress) Thread.Sleep(1000/30);//进度增加延时
+                                WriteLineList.RemoveAt(0);
                             }
                             catch { }
-                            WriteLineList.RemoveAt(0);
                         }
                         //对进度进行处理，使其进度最低存在一个，且必须处于最后
                         for (int i = 0; WriteLineList.Count > i; i++)
@@ -41,7 +42,7 @@ namespace WaterBallTool
                                 }
                             }
                         }
-                        Thread.Sleep(1);
+                        
                     }
                 });
             logTask.Start();

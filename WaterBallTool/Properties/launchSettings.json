@@ -2,7 +2,7 @@
   "profiles": {
     "WaterPoloTool": {
       "commandName": "Project",
-      "commandLineArgs": "wbfp m \"C:\\WaterBall\\Documents\" \"D:\\WaterBall\\BF\\C\\WaterBall\\Documents\" --oh",
+      "commandLineArgs": "wbfp m \"C:\\WaterBall\\Apps\\Tools\" \"D:\\WaterBall\\BF\\C\\WaterBall\\Apps\\Tools\" --oh",
       "remoteDebugEnabled": false,
       "remoteDebugMachine": "192.168.2.5:50080",
       "authenticationMode": "None"
