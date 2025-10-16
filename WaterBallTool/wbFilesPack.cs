@@ -21,7 +21,6 @@ namespace WaterBallTool
         {
             //命令
             var wbfpCommand = new Command("wbfp", "水球文件包操作器");
-            // wbfpCommand.AddAlias("wbFilesPack");
             wbfpCommand.AddCommand(MergeCommand());//合并
             wbfpCommand.AddCommand(SeparationCommand());//分离
             wbfpCommand.AddCommand(ToolCommand());//工具
@@ -96,8 +95,11 @@ namespace WaterBallTool
                             filesPackData.Attribute.OnHash = onHash;
                             filesPackData.Attribute.SListFile = onSListFile;
                             //filesPackData.FilesList = filesList;
+
                             //列表对比
                             MWriteLine("开始进行列表对比");
+                            //空数据位置列表，[[数据起始位置，大小]]
+                            List<long[]> nullDataPositions = new List<long[]>();
                             ListComparison(filesPackDataRead.FilesList.FilesList, filesList.FilesList);
 
                             //比较列表:旧列表，新列表
@@ -116,6 +118,7 @@ namespace WaterBallTool
                                             {
                                                 //文件夹时递归
                                                 ListComparison(seekInfo.FilesList, ((WBFilesInfo)item).FilesList);
+                                                fileInfo_Reads.Remove(seekInfo);//删除旧文件数据，以减少后续基于旧列表的查找时间
                                             }
 
                                         }
@@ -133,16 +136,49 @@ namespace WaterBallTool
                                                 {
                                                     //MWriteLine($"文件{item.Name}未发生变化", WriteTy.Info);
                                                     CompareResult = 0;
+                                                    //同步位置数据
+                                                    ((WBFileInfo2)item).DataStratPosition = seekInfo.DataStrratPosition;
+                                                    ((WBFileInfo2)item).DataPositions = seekInfo.DataPositions;
+                                                    item.Length = seekInfo.Length;
                                                 }
                                                 else if (seekInfo.Length < item.Length)
                                                 {
                                                     MWriteLine($"文件{item.Name}发生变化，大小增加[{DataLengthToString(item.Length - seekInfo.Length)}]", WriteTy.Warn);
                                                     CompareResult = 2;
+                                                    //分块数据处理
+                                                    var item_2 = (WBFileInfo2)item;
+                                                    //判断是否已分块
+                                                    if(seekInfo.DataPositions.Count > 0)
+                                                    {
+                                                        //已分块,直接移动
+                                                        item_2.DataPositions = seekInfo.DataPositions;
+                                                    }
+                                                    else
+                                                    {
+                                                        //未分块，进行分块
+                                                        item_2.DataPositions.Add(new long[] { seekInfo.DataStrratPosition, seekInfo.Length });
+                                                    }
                                                 }
                                                 else if (seekInfo.Length > item.Length)
                                                 {
-                                                    MWriteLine($"文件{item.Name}发生变化，大小减少[{DataLengthToString(seekInfo.Length - item.Length)}]", WriteTy.Warn);
+                                                    long nullLength = seekInfo.Length - item.Length;
+                                                    MWriteLine($"文件{item.Name}发生变化，大小减少[{DataLengthToString(nullLength)}]", WriteTy.Warn);
                                                     CompareResult = 3;
+                                                    //分块数据处理
+                                                    var item_2 = (WBFileInfo2)item;
+                                                    //判断是否已分块
+                                                    if(seekInfo.DataPositions.Count > 0)
+                                                    {
+                                                        //已分块，需要判断
+                                                        
+                                                    }
+                                                    else
+                                                    {
+                                                       //添加空数据位置
+                                                        NullDataPositionAdd((seekInfo.DataStrratPosition + seekInfo.Length - nullLength), nullLength);
+                                                        //未分块，进行分块
+                                                        item_2.DataPositions.Add(new long[] { seekInfo.DataStrratPosition, seekInfo.Length });
+                                                    }
                                                 }
                                                 fileInfo_Reads.Remove(seekInfo);//删除旧文件数据，以减少后续基于旧列表的查找时间
                                             }
@@ -151,7 +187,10 @@ namespace WaterBallTool
                                     else
                                     {
                                         CompareResult = 1;
-                                        MWriteLine($"文件{item.Name}为新增文件", WriteTy.Warn);
+                                        if(item.IsD)
+                                            MWriteLine($"文件夹{item.Name}为新增文件夹", WriteTy.Warn);
+                                        else
+                                            MWriteLine($"文件{item.Name}为新增文件", WriteTy.Warn);
                                     }
                                     //在旧列表中寻找
                                     WBFileInfo_Read SeekInfo(WBFileInfo fileInfo)
@@ -166,13 +205,88 @@ namespace WaterBallTool
                                 //再基于旧列表查找，查找被删除的文件
                                 foreach (var item in fileInfo_Reads)
                                 {
-                                    if (!item.IsD)
+                                    if (item.IsD)
+                                    {
+                                        MWriteLine($"文件夹{item.Name}已被删除", WriteTy.Warn);
+                                        //处理被删除的文件夹内的文件
+                                        DeleteFilesData(item.FilesList);
+                                        void DeleteFilesData(List<WBFileInfo_Read> wBFileInfo_Reads)
+                                        {
+                                            foreach (var item2 in wBFileInfo_Reads)
+                                            {
+                                                if (item2.IsD)
+                                                {
+                                                    DeleteFilesData(item2.FilesList);
+                                                }
+                                                else
+                                                {
+                                                    MWriteLine($"文件{item2.Name}已被删除", WriteTy.Warn);
+                                                    //添加空数据位置_删除的文件
+                                                    NullDataPositionAdd_Del(item2);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
                                     {
                                         MWriteLine($"文件{item.Name}已被删除", WriteTy.Warn);
+                                        //添加空数据位置_删除的文件
+                                        NullDataPositionAdd_Del(item);
                                     }
-
                                 }
 
+                                //添加空数据位置_删除的文件
+                                void NullDataPositionAdd_Del(WBFileInfo_Read fileInfo_Read)
+                                {
+                                    //分割判断
+                                    if(fileInfo_Read.DataPositions.Count > 0)
+                                    {
+                                        //此前已分割
+                                        var positions = fileInfo_Read.DataPositions;
+                                        foreach (var item in positions)
+                                        {
+                                            NullDataPositionAdd(item[0], item[1]);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        //未分割
+                                        NullDataPositionAdd(fileInfo_Read.DataStrratPosition, fileInfo_Read.Length);
+                                    }
+                                }
+
+                                //添加空数据位置
+                                void NullDataPositionAdd(long startPosition, long Length)
+                                {
+                                    //合并判断
+                                    if (nullDataPositions.Count == 0)
+                                    {
+                                        nullDataPositions.Add(new long[] { startPosition, Length });
+                                        return;
+                                    }
+
+                                    for (var i = 0; i < nullDataPositions.Count; i++)
+                                    {
+                                        var item = nullDataPositions[i];
+                                        //前后相连
+                                        if ((item[0] + item[1]) == startPosition)
+                                        {
+                                            item[1] += Length;
+                                        }
+                                        else if((i+1) == nullDataPositions.Count)
+                                        {
+                                            nullDataPositions.Add(new long[] { startPosition, Length });
+                                            return;
+                                        }
+                                    }
+                                }
+
+                            }
+
+                            //调试
+                            foreach (var item in nullDataPositions)
+                            {
+                                MWriteLine($"空数据位置：起始位置：{item[0]}，大小：{item[1]}");
                             }
 
                             MWriteLine("列表对比完成");
@@ -183,11 +297,12 @@ namespace WaterBallTool
                             {
                                 MWriteLine("写入优化未开发完成，写入优化将禁用", WriteTy.Warn);
                                 onWriteOptimization = false;//关闭写入优化
-                                WriteLine("按任意键继续");
+                                WriteLine("按任意键继续",WriteTy.Read);
                                 _ = Console.Read();
                             }
                             /*==============*/
 
+                            //MWriteLine("开始写入数据");
 
                         }
                         else
@@ -299,7 +414,7 @@ namespace WaterBallTool
                                         //源文件流
                                         using FileStream inFileStream = new(inFilePath, FileMode.Open, FileAccess.Read);
                                         //当前文件的包文件数据起始位置
-                                        long dataStartPosition = DataStartPosition + ((WBFileInfo2)item).DataStartPosition;
+                                        long dataStartPosition = DataStartPosition + ((WBFileInfo2)item).DataStratPosition;
                                         //当前文件写入长度
                                         long dataWriteLength = 0;
                                         //设置包文件指针位置
@@ -428,7 +543,7 @@ namespace WaterBallTool
                                     var wbFileInfo2 = (WBFileInfo2)wbFileInfo;
 
                                     //算出文件的數據起始位置
-                                    wbFileInfo2.DataStartPosition = dataPosition;
+                                    wbFileInfo2.DataStratPosition = dataPosition;
                                     dataPosition += wbFileInfo.Length;
                                 }
                                 else
@@ -619,7 +734,7 @@ namespace WaterBallTool
             return (null, null, 0, null);
         }
 
-                    //分离
+        //分离
         static Command SeparationCommand()
         {
             //参数
@@ -714,7 +829,7 @@ namespace WaterBallTool
                                             }
                                             Directory.CreateDirectory(outPath2);
                                             //设置包文件指针位置
-                                            fileStream.Position = filesPackData.Attribute.FileDataStartPosition + item.DataStartPosition;
+                                            fileStream.Position = filesPackData.Attribute.FileDataStartPosition + item.DataStrratPosition;
                                             //判断是否为文件夹
                                             if (Directory.Exists(outFilePath))
                                             {
@@ -912,18 +1027,25 @@ namespace WaterBallTool
                                                                 }
                                                                 //设置文件大小
                                                                 outFileStream.SetLength(item.Length);
+                                                                //关闭
+                                                                outFileStream.Flush();
+                                                                outFileStream.Close();
+                                                                outFileStream.Dispose();
                                                             }
                                                             else
                                                                 WriteNew();
                                                         }
                                                     }
                                                 }
-
                                                 else
                                                 {
 
                                                     WriteNew();
                                                 }
+                                                //设置文件最后修改时间
+                                                File.SetLastWriteTime(outFilePath, item.LastWriteTime);
+
+
                                                 void WriteNew()
                                                 {
                                                     //输出文件流
@@ -988,8 +1110,12 @@ namespace WaterBallTool
                                                             fileHashStr = BitConverter.ToString(fileHash).Replace("-", "").ToLower();
                                                         }
                                                         //验证
-                                                        if (fileHashStr.Equals(item.Hash)) {  /*SWriteLine($"[哈希验证][通过]{outFilePath}");*/ } else { SWriteLine($"[哈希验证][不一致]{outFilePath}", WriteTy.Warn); }
+                                                        if (!fileHashStr.Equals(item.Hash)) { SWriteLine($"[哈希验证][不一致]{outFilePath}", WriteTy.Warn); }
                                                     }
+                                                    //关闭
+                                                    outFileStream.Flush();
+                                                    outFileStream.Close();
+                                                    outFileStream.Dispose();
                                                 }
                                             }
                                             //计算进度
@@ -1154,7 +1280,7 @@ namespace WaterBallTool
                                         break;
                                     }
                                     //当前文件的包文件数据起始位置
-                                    long dataStartPosition = filesPackData.Attribute.FileDataStartPosition + item.DataStartPosition;
+                                    long dataStartPosition = filesPackData.Attribute.FileDataStartPosition + item.DataStrratPosition;
                                     //当前文件读取长度
                                     long dataReadLength = 0;
                                     //设置包文件指针位置
@@ -1328,7 +1454,7 @@ namespace WaterBallTool
                                                         string FilesCountStr = $"{item.FilesCount}";
                                                         if (FilesCountStr.Length < 10) FilesCountStr = $"{new string(' ', (10 - FilesCountStr.Length) / 2)}{FilesCountStr}{new string(' ', (10 - FilesCountStr.Length) - (10 - FilesCountStr.Length) / 2)}";
                                                         //数据起始位置
-                                                        string DataStartPosition = $"{item.DataStartPosition}";
+                                                        string DataStartPosition = $"{item.DataStrratPosition}";
                                                         if (DataStartPosition.Length < 15) DataStartPosition = $"{new string(' ', (15 - DataStartPosition.Length) / 2)}{DataStartPosition}{new string(' ', (15 - DataStartPosition.Length) - (15 - DataStartPosition.Length) / 2)}";
                                                         //               -|      序号     |                      是文件夹                       |   文件大小   |      子文件数      |       数据起始位置      |哈希值|文件名|
                                                         WriteLine($" {indexStr} | {(item.IsD ? "是文件夹" : "非文件夹")} | {LengthStr}| {FilesCountStr} | {DataStartPosition} |{(filesPackData.Attribute.OnHash ? $" {(item.Hash.Equals("") ? new string(' ', 64) : item.Hash)} |" : "")} {item.Name}", WriteTy.None);
@@ -1491,7 +1617,7 @@ namespace WaterBallTool
                 get
                 {
                     //当前解析器版本
-                    int Version = 1;
+                    int Version = 2;
                     //兼容最低版本
                     int VersionCompatible = 1;
                     //判断文件的版本是否过低
@@ -1536,11 +1662,14 @@ namespace WaterBallTool
             //所有子文件数(不包括文件夹)
             public int FilesCount { get; set; } = 0;
             //数据起始位置
-            public long DataStartPosition { get; set; } = 0;
+            public long DataStrratPosition { get; set; } = 0;
             //哈希
             public string Hash { get; set; } = "";
             //数据位置分段，修改文件后用
-            public List<long> DataPosition { get; set; } = [];
+            public List<long[]> DataPositions { get; set; } = [];
+            /*===V2===*/
+            //最后修改时间
+            public DateTime LastWriteTime { get; set; } = DateTime.Now;
         }
 
         // 定义一个表示文件搜索结果列表的类
@@ -1628,7 +1757,7 @@ namespace WaterBallTool
         public class DataVersion
         {
             //文件标记的版本
-            public int Value { get; set; } = 1;
+            public int Value { get; set; } = 2;
             //文件标记的兼容版本
             public int Compatible { get; set; } = 1;
 

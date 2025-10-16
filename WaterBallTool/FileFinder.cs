@@ -40,7 +40,7 @@ namespace WaterBallTool
                             WriteLine($"文本已成功保存到{outFile}，大小:{WBFilesPack.DataLengthToString(filesList.WriterToFile(fileStream, jsonFo ? Formatting.Indented : Formatting.None))}");
                         }
 
-                        WriteLine("按任意键关闭");
+                        WriteLine("按任意键关闭",WriteTy.Read);
                         _ = Console.Read();
                         
                     }
@@ -75,21 +75,23 @@ namespace WaterBallTool
             public long Length { get; set; } = 0;
             //是文件夹
             public bool IsD { get; set; } = false;
+            //最后修改时间
+            public DateTime LastWriteTime { get; set; } = DateTime.Now;
         }
 
-         //包文件专用
+        //包文件专用
         public class WBFileInfo2 : WBFileInfo
         {
             //数据起始位置
-            public long DataStartPosition { get; set; } = 0;
+            public long DataStratPosition { get; set; } = 0;
             //哈希
             public string Hash { get; set; } = "";
             /*===V2===*/
             //数据分段
             public bool IsDataSegmented { get; set; } = false;
 
-            //数据分段时表示数据位置用的，修改文件后用
-            public List<long> DataPosition { get; set; } = [];
+            //数据分段时表示数据位置用的，修改文件后用,[[数据起始位置,长度]]
+            public List<long[]> DataPositions { get; set; } = [];
         }
 
         public class WBFilesInfo : WBFileInfo
@@ -110,7 +112,7 @@ namespace WaterBallTool
             public List<WBFileInfo> FilesList { get; set; } = [];
             //总数据大小
             public long DataLength { get; set; } = 0;
-            //总文件大小
+            //总文件数量
             public int FilesCount
             {
                 get
@@ -180,7 +182,7 @@ namespace WaterBallTool
                                 if (onHash0) wpFileInfo2.Hash = new string('0', 64);
 
                                 //算出文件的數據起始位置
-                                wpFileInfo2.DataStartPosition = dataPosition;
+                                wpFileInfo2.DataStratPosition = dataPosition;
                                 dataPosition += wpFileInfo.Length;
                             }
                             else
@@ -237,6 +239,7 @@ namespace WaterBallTool
                             if (isPack) wpFileInfo = new WBFileInfo2();
                             wpFileInfo.Name = fileInfo.Name;//文件名
                             wpFileInfo.Length = fileInfo.Length;//大小
+                            wpFileInfo.LastWriteTime = fileInfo.LastWriteTime;//最后修改时间
                             //将当前文件添加到集合
                             WPFilesList.Add(wpFileInfo);
                             //若存在父文件夹对象
@@ -278,20 +281,20 @@ namespace WaterBallTool
                         //添加到集合
                         WPFilesList.Add(wpFilesInfo);
                         Task task = new(() =>
-                                         {
-                                             //更新进度
-                                             taskCount++;
-                                             //递归搜索子文件
-                                             SearchFilesRecursively(directory, isPack, onHash0, wpFilesInfo.FilesList, wpFilesInfo);
-                                             //若存在父文件夹对象
-                                             if (sWPFileInfo != null)
-                                             {
-                                                 //将本文件夹的大小附加，即为父文件的大小
-                                                 sWPFileInfo.Length += wpFilesInfo.Length;
-                                                 //将本文件夹的文件数附加
-                                                 sWPFileInfo.FilesCount += wpFilesInfo.FilesCount;
-                                             }
-                                         });
+                        {
+                            //更新进度
+                            taskCount++;
+                            //递归搜索子文件
+                            SearchFilesRecursively(directory, isPack, onHash0, wpFilesInfo.FilesList, wpFilesInfo);
+                            //若存在父文件夹对象
+                            if (sWPFileInfo != null)
+                            {
+                                //将本文件夹的大小附加，即为父文件的大小
+                                sWPFileInfo.Length += wpFilesInfo.Length;
+                                //将本文件夹的文件数附加
+                                sWPFileInfo.FilesCount += wpFilesInfo.FilesCount;
+                             }
+                        });
                         task.Start();
                         tasks[index] = task;
                     }

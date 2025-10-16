@@ -24,7 +24,7 @@ namespace WaterBallTool
                             {
                                 (string info, WriteTy Ty, Exception? ex, double Progress) = WriteLineList[0];
                                 mWriteLine(info, Ty, ex, Progress);
-                                if(Ty == WriteTy.Progress) Thread.Sleep(1000/30);//进度增加延时
+                                if(Ty == WriteTy.Progress) Thread.Sleep(1000 / 5);//进度增加延时
                                 WriteLineList.RemoveAt(0);
                             }
                             catch { }
@@ -80,6 +80,7 @@ namespace WaterBallTool
                 int PositionTop = Console.CursorTop;
                 int BufferHeight = Console.BufferHeight;
                 int BufferWidth = Console.BufferWidth;
+                Str += $"[{DateTime.Now:yyyy/MM/dd HH:mm:ss.fff}]";//时间
                 //打印类型名称
                 switch (Ty)
                 {
@@ -117,7 +118,6 @@ namespace WaterBallTool
                     string progressBar = new string('>', progressWidth).PadRight(totalWidth, '-');
                     Str += $"[{progressBar}]{Progress,6:0.##}%";
                 }
-                Str += $"[{DateTime.Now:yyyy/MM/dd HH:mm:ss.fff}]";
                 Console.SetCursorPosition(0, PositionTop);//光标置左
                 //防止单行存在多余内容
                 if (Ty == WriteTy.Progress)
