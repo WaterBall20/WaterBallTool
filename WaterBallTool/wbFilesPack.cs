@@ -422,7 +422,7 @@ namespace WaterBallTool
 
                             /*===json数据===*/
                             //包列表文件流
-                            using FileStream listFileStream = new($"{outFileName}.json", FileMode.OpenOrCreate, FileAccess.ReadWrite);
+                            using FileStream listFileStream = new($"{outFileName}.json", FileMode.Create, FileAccess.ReadWrite);
                             MWriteLine("创建包列表文件(json)并打开");
                             //文件数据起始位置
                             long DataStartPosition = FileHeader.Length + jsonDataLength;
