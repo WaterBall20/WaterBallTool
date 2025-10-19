@@ -83,12 +83,10 @@ namespace WaterBallTool
         public class WBFileInfo2 : WBFileInfo
         {
             //数据起始位置
-            public long DataStratPosition { get; set; } = 0;
+            public long DataStartPosition { get; set; } = 0;
             //哈希
             public string Hash { get; set; } = "";
             /*===V2===*/
-            //数据分段
-            public bool IsDataSegmented { get; set; } = false;
 
             //数据分段时表示数据位置用的，修改文件后用,[[数据起始位置,长度]]
             public List<long[]> DataPositions { get; set; } = [];
@@ -182,7 +180,7 @@ namespace WaterBallTool
                                 if (onHash0) wpFileInfo2.Hash = new string('0', 64);
 
                                 //算出文件的數據起始位置
-                                wpFileInfo2.DataStratPosition = dataPosition;
+                                wpFileInfo2.DataStartPosition = dataPosition;
                                 dataPosition += wpFileInfo.Length;
                             }
                             else
@@ -193,23 +191,7 @@ namespace WaterBallTool
                         }
                     }
 
-                    //计算总大小
-                    void AllDataLength(List<WBFileInfo> WPFilesList)
-                    {
-                        foreach (var wpFileInfo in WPFilesList)
-                        {
-                            //文件
-                            if (!wpFileInfo.IsD)
-                            {
-                                DataLength += wpFileInfo.Length;
-                            }
-                            else
-                            {
-                                //算出文件的數據起始位置
-                                AllDataLength(((WBFilesInfo)wpFileInfo).FilesList);
-                            }
-                        }
-                    }
+                    
 
                 }
                 catch (UnauthorizedAccessException uae)
@@ -223,6 +205,24 @@ namespace WaterBallTool
                     FFWriteLine("未知错误，请检查路径", WriteTy.Warn, ex);
                 }
             }
+
+            //计算总大小
+            public void AllDataLength(List<WBFileInfo> WPFilesList)
+            {
+                foreach (var wpFileInfo in WPFilesList)
+                        {
+                            //文件
+                            if (!wpFileInfo.IsD)
+                            {
+                                DataLength += wpFileInfo.Length;
+                            }
+                            else
+                            {
+                                //递归
+                                AllDataLength(((WBFilesInfo)wpFileInfo).FilesList);
+                            }
+                        }
+                    }
 
             // 递归搜索文件的方法
             private void SearchFilesRecursively(string path, bool isPack, bool onHash0, List<WBFileInfo> WPFilesList, WBFilesInfo? sWPFileInfo = null)

@@ -1,8 +1,22 @@
 {
   "profiles": {
-    "WaterPoloTool": {
+    "配置文件 1": {
       "commandName": "Project",
-      "commandLineArgs": "wbfp m \"C:\\WaterBall\\Apps\\Tools\" \"D:\\WaterBall\\BF\\C\\WaterBall\\Apps\\Tools\" --oh",
+      "commandLineArgs": "wbfp m \"C:\\Temp\\新建文件夹\" \"C:\\Temp\\新建文件夹\" --oh",
+      "remoteDebugEnabled": false,
+      "remoteDebugMachine": "192.168.2.5:50080",
+      "authenticationMode": "None"
+    },
+    "配置文件 2": {
+      "commandName": "Project",
+      "commandLineArgs": "wbfp t hv \"C:\\Temp\\新建文件夹\"",
+      "remoteDebugEnabled": false,
+      "remoteDebugMachine": "192.168.2.5:50080",
+      "authenticationMode": "None"
+    },
+    "配置文件 3": {
+      "commandName": "Project",
+      "commandLineArgs": "wbfp s \"C:\\Temp\\新建文件夹\" \"C:\\Temp\\新建文件夹(2)\" --oh",
       "remoteDebugEnabled": false,
       "remoteDebugMachine": "192.168.2.5:50080",
       "authenticationMode": "None"
