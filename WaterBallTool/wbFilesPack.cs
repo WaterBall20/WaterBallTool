@@ -1726,15 +1726,15 @@ namespace WaterBallTool
                                                                 ReadLength = (int)(item.Length - dataWriteLength);
                                                             }
                                                         }
+
+                                                        fileStream.Position = GetDataPosition(dataWriteLength);
                                                         int ReadLength2 = fileStream.Read(dataBytes, 0, ReadLength);
                                                         //判断是否读取到头
-
                                                         if (ReadLength2 <= 0)
                                                         {
                                                             SWriteLine("包文件数据不完整，无法继续", WriteTy.Error);
                                                             return;
                                                         }
-                                                        fileStream.Position = GetDataPosition(dataWriteLength);
                                                         outFileStream.Write(dataBytes, 0, ReadLength2);
                                                         dataWriteLength += ReadLength2;
                                                         outFileStream.Flush();
