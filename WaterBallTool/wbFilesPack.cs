@@ -156,6 +156,8 @@ namespace WaterBallTool
                                                     {
                                                         //未分块，进行分块
                                                         item_2.DataPositions.Add(new long[] { seekInfo.DataStartPosition, seekInfo.Length });
+                                                        //置数据起始位置为-2
+                                                        item_2.DataStartPosition = -2;
                                                     }
                                                 }
                                                 else if (seekInfo.Length > item.Length)
@@ -209,7 +211,28 @@ namespace WaterBallTool
                                     else
                                     {
                                         if(item.IsD)
+                                        {
                                             MWriteLine($"文件夹{item.Name}为新增文件夹", WriteTy.Warn);
+                                            //处理新增文件夹内的文件
+                                            NewFolderFilesData(((WBFilesInfo)item).FilesList);
+                                            void NewFolderFilesData(List<WBFileInfo> wBFileInfos)
+                                            {
+                                                foreach (var item2 in wBFileInfos)
+                                                {
+                                                    if (item2.IsD)
+                                                    {
+                                                        MWriteLine($"文件夹{item2.Name}为新增文件夹", WriteTy.Warn);
+                                                        NewFolderFilesData(((WBFilesInfo)item2).FilesList);
+                                                    }
+                                                    else
+                                                    {
+                                                        MWriteLine($"文件{item2.Name}为新增文件", WriteTy.Warn);
+                                                        //将新增文件的数据位置置为-1，待后续分配位置
+                                                        ((WBFileInfo2)item2).DataStartPosition = -1;
+                                                    }
+                                                }
+                                            }
+                                        }
                                         else
                                         {
                                             MWriteLine($"文件{item.Name}为新增文件", WriteTy.Warn);
@@ -232,7 +255,7 @@ namespace WaterBallTool
                                 {
                                     if (item.IsD)
                                     {
-                                        MWriteLine($"文件夹{item.Name}已被删除", WriteTy.Warn);
+                                         MWriteLine($"文件夹{item.Name}已被删除", WriteTy.Warn);
                                         //处理被删除的文件夹内的文件
                                         DeleteFilesData(item.FilesList);
                                         void DeleteFilesData(List<WBFileInfo_Read> wBFileInfo_Reads)
@@ -289,21 +312,7 @@ namespace WaterBallTool
                                         emptyDataPositions.Add(new long[] { startPosition, Length });
                                         return;
                                     }
-
-                                    for (var i = 0; i < emptyDataPositions.Count; i++)
-                                    {
-                                        var item = emptyDataPositions[i];
-                                        //前后相连
-                                        if ((item[0] + item[1]) == startPosition)
-                                        {
-                                            item[1] += Length;
-                                        }
-                                        else if((i+1) == emptyDataPositions.Count)
-                                        {
-                                            emptyDataPositions.Add(new long[] { startPosition, Length });
-                                            return;
-                                        }
-                                    }
+                                    MergeDataPositions(emptyDataPositions);
                                 }
 
                             }
@@ -358,6 +367,9 @@ namespace WaterBallTool
                                             //如果分块总大小小于需要大小则需要增加分配
                                             if(lastLength < needLength)
                                             {
+
+                                                //置数据起始位置为-2
+                                                item_2.DataStartPosition = -2;
                                                 //需要增加分配的大小
                                                 long needAddLength = needLength - lastLength;
                                                 //开始分配
@@ -398,6 +410,14 @@ namespace WaterBallTool
                                                     }
                                                 }
                                             }
+                                            //尝试合并分块数组
+                                            MergeDataPositions(item_2.DataPositions);
+                                            if(item_2.DataPositions.Count == 1)
+                                            {
+                                                //如果分块数组只有一个，则转为未分块模式
+                                                item_2.DataStartPosition = item_2.DataPositions[0][0];
+                                                item_2.DataPositions.Clear();
+                                            }
 
                                         }
                                         else
@@ -405,13 +425,139 @@ namespace WaterBallTool
                                             //未分块，仅对新增文件进行位置分配
                                             if(item_2.DataStartPosition == -1)
                                             {
-                                                item_2.DataStartPosition = endPosition;
-                                                endPosition += item_2.Length;
+                                                //优先尝试使用空数据位置，进行分块
+                                                if (emptyDataPositions.Count > 0)
+                                                {
+
+                                                    //置数据起始位置为0，减少存储空间
+                                                    item_2.DataStartPosition = 0;
+                                                    //需要增加分配的大小
+                                                    long needAddLength = item_2.Length;
+                                                    //开始分配
+                                                    while (needAddLength >0)
+                                                    {
+                                                        if (emptyDataPositions.Count == 0)
+                                                        {
+                                                            //没有空数据位置,增加包文件大小
+                                                            item_2.DataPositions.Add(new long[] { endPosition, needAddLength });
+                                                            endPosition += needAddLength;
+                                                            needAddLength = 0;
+                                                        }
+                                                        else
+                                                        {
+                                                            //尝试占用第一个空数据
+                                                            var empty1 = emptyDataPositions[0];
+                                                            //第一个空数据起始位置
+                                                            var emptyStartPosition = empty1[0];
+                                                            //第一个空数据大小
+                                                            var emptyLength = empty1[1];
+                                                            if (emptyLength < needAddLength)
+                                                            {
+                                                                //空数据大小小于需要大小，全部占用
+                                                                item_2.DataPositions.Add(new long[] { emptyStartPosition, emptyLength });
+                                                                needAddLength -= emptyLength;
+                                                                //删除空数据位置
+                                                                emptyDataPositions.RemoveAt(0);
+                                                            }
+                                                            else if(emptyLength == needAddLength)
+                                                            {
+                                                                //空数据大小等于需要大小，全部占用
+                                                                if(item_2.DataPositions.Count == 0)
+                                                                {
+                                                                    //如果没有分块，直接使用数据起始位置
+                                                                    item_2.DataStartPosition = emptyStartPosition;
+                                                                }
+                                                                else
+                                                                {
+                                                                    item_2.DataPositions.Add(new long[] { emptyStartPosition, needAddLength });
+                                                                }
+                                                                //删除空数据位置
+                                                                emptyDataPositions.RemoveAt(0);
+                                                            }
+                                                            else
+                                                            {
+                                                                //空数据大小大于需要大小，部分占用
+                                                                item_2.DataPositions.Add(new long[] { emptyStartPosition, needAddLength });
+                                                                //更新空数据位置
+                                                                empty1[0] += needAddLength;
+                                                                empty1[1] -= needAddLength;
+                                                                needAddLength = 0;
+                                                            }
+                                                        }
+                                                    }
+                                                    //尝试合并分块数组
+                                                    MergeDataPositions(item_2.DataPositions);
+                                                    if(item_2.DataPositions.Count == 1)
+                                                    {
+                                                        //如果分块数组只有一个，则转为未分块模式
+                                                        item_2.DataStartPosition = item_2.DataPositions[0][0];
+                                                        item_2.DataPositions.Clear();
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    //没有空数据位置,增加包文件大小
+                                                    item_2.DataStartPosition = endPosition;
+                                                    endPosition += item_2.Length;
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+
+
+                            //对分块数组进行合并
+                            void MergeDataPositions(List<long[]> longss)
+                            {
+
+                                    //前后相连
+                                    for (var i = 0; i < longss.Count; i++)
+                                    {
+                                        var item = longss[i];
+                                        for (var j = 0; j < longss.Count; j++)
+                                        {
+                                            
+                                            if (i != j)
+                                            {
+                                            var item2 = longss[j];
+                                                //前后相连，合并
+                                                if (item[0] + item[1] == item2[0])
+                                                {
+                                                    //合并
+                                                    item[1] += item2[1];
+                                                    //删除item2
+                                                    longss.RemoveAt(j);
+                                                    j--;
+                                                }
+                                                else if (item2[0] + item2[1] == item[0])
+                                                {
+                                                    //合并
+                                                    item2[1] += item[1];
+                                                    //删除item
+                                                    longss.RemoveAt(i);
+                                                    i--;
+                                                    break;
+                                                }
+                                            }
+                                    }
+                                }
+                                    //删除重复对象
+                                    for (var i = 0;i < longss.Count; i++)
+                                    {   var item = longss[i];
+                                        for (var j = 0; j < longss.Count; j++)
+                                        {
+                                            var item2 = longss[j];
+                                            if (item[0] == item2[0] && item[1] == item2[i])
+                                            {
+                                                //重复，删除
+                                                longss.RemoveAt(j);
+                                                j--;
+                                            }
+                                        }
+                                    }
+                            }
+
                             //写入空白数据位置，临时代码
                             filesPackData.Attribute.EmptyDataPositions = emptyDataPositions;
                             MWriteLine("位置分配计算完成");
@@ -426,11 +572,11 @@ namespace WaterBallTool
                             MWriteLine("创建包列表文件(json)并打开");
                             //文件数据起始位置
                             long DataStartPosition = FileHeader.Length + jsonDataLength;
-                            
-                            byte[]? jsonDataByte = filesPackData.ToJsonBytes();
                             /*
 
                             
+                            
+                            byte[]? jsonDataByte = filesPackData.ToJsonBytes();
                             //循环确定文件数据起始位置
                             while (filesPackData.Attribute.FileDataStartPosition != DataStartPosition)
                             {
@@ -482,7 +628,7 @@ namespace WaterBallTool
                             //当前已处理文件数
                             int inFilesIndex = 0;
                             //当前已处理数据大小
-                            int inDataLength = 0;
+                            long inDataLength = 0;
                             MFiles(filesList.FilesList, "");
                             void MFiles(List<WBFileInfo> filesList2, string relativePath)
                             {
@@ -602,8 +748,6 @@ namespace WaterBallTool
                                                             fileStream.Position = GetDataPosition();
                                                             //写出
                                                             fileStream.Write(dataBytes, 0, ReadLength2);
-                                                            dataWriteLength += ReadLength2;
-                                                        inDataLength += ReadLength2;
                                                     }
                                                         else
                                                         {
@@ -619,9 +763,9 @@ namespace WaterBallTool
                                                                 //写出
                                                                 fileStream.Write(dataBytes, 0, ReadLength2);
                                                             }
+                                                        }
                                                             dataWriteLength += ReadLength2;
                                                         inDataLength += ReadLength2;
-                                                        }
                                                         fileStream.Flush();
                                                         //哈希计算
                                                         if (onHash) sHA256.TransformBlock(dataBytes, 0, ReadLength, null, 0);
@@ -702,9 +846,8 @@ namespace WaterBallTool
 
                             void UpdateProgress(WBFileInfo item, string relativePath)
                             {
-                                long PackDataLength = fileStream.Length - filesPackDataRead.Attribute.FileDataStartPosition;
-                                double Progress = (double)PackDataLength * 100 / (double)filesList.DataLength;
-                                MWriteLine($"数据：{DataLengthToString(PackDataLength)}/{DataLengthToString(filesList.DataLength)}|文件({inFilesIndex}/{filesList.FilesCount})：{relativePath}", Ty: WriteTy.Progress, Progress: Math.Round(Progress, 2));
+                                double Progress = (double)inDataLength * 100 / (double)filesList.DataLength;
+                                MWriteLine($"数据：{DataLengthToString(inDataLength)}/{DataLengthToString(filesList.DataLength)}|文件({inFilesIndex}/{filesList.FilesCount})：{relativePath}", Ty: WriteTy.Progress, Progress: Math.Round(Progress, 2));
                             }
 
                             void DataLength(List<WBFileInfo> WBFilesList)
@@ -734,7 +877,7 @@ namespace WaterBallTool
                             if (onHash)
                             {
 
-                                if (!onSListFile)
+                                /*if (!onSListFile)
                                 {
                                     jsonDataByte = filesPackData.ToJsonBytes(onSListFile ? Formatting.Indented : Formatting.None);
                                     MWriteLine($"由于开启哈希计算，所以现在进行json数据刷新:{DataLengthToString(jsonDataByte.LongLength)}");
@@ -743,9 +886,12 @@ namespace WaterBallTool
                                     fileStream.Write(jsonDataByte);
                                     fileStream.Flush();
                                 }
-                                //json文件
-                                MWriteLine($"写入json文件，长度：写入：{DataLengthToString(filesPackData.WriterToFile(listFileStream, onSListFile ? Formatting.Indented : Formatting.None))}");
-                                MWriteLine("json文件已关闭");
+                                else*/
+                                {
+                                    //json文件
+                                    MWriteLine($"写入json文件，长度：写入：{DataLengthToString(filesPackData.WriterToFile(listFileStream, onSListFile ? Formatting.Indented : Formatting.None))}");
+                                    MWriteLine("json文件已关闭");
+                                }
                             }
                             MWriteLine("完成");
                         }
@@ -769,7 +915,19 @@ namespace WaterBallTool
 
                 //非写入优化
                 if(!onWriteOptimization)
-{
+                {
+
+                    //路径
+                    string[] outFilePathArr = outFileName.Split("\\");
+                    //所在目录路径
+                    string outPath2 = "";
+                    //处理路径
+                    for (int i = 0; i < outFilePathArr.Length - 1; i++)
+                    {
+                        outPath2 += outFilePathArr[i] + "\\";
+                    }
+                    //创建目录，如果不存在,则创建，防止目录不存在导致无法创建文件
+                    Directory.CreateDirectory(outPath2);
                     using FileStream fileStream = new(outFileName, FileMode.Create, FileAccess.ReadWrite);
                     MWriteLine("创建包文件并打开");
                     //包列表文件流
@@ -1007,9 +1165,12 @@ namespace WaterBallTool
                             fileStream.Write(jsonDataByte);
                             fileStream.Flush();
                         }
-                        //json文件
-                        MWriteLine($"写入json文件，长度：写入：{DataLengthToString(filesPackData.WriterToFile(listFileStream, onSListFile ? Formatting.Indented : Formatting.None))}");
-                        MWriteLine("json文件已关闭");
+                        else
+                        {
+                            //json文件
+                            MWriteLine($"写入json文件，长度：写入：{DataLengthToString(filesPackData.WriterToFile(listFileStream, onSListFile ? Formatting.Indented : Formatting.None))}");
+                            MWriteLine("json文件已关闭");
+                        }
                     }
                     fileStream.Flush();
                     fileStream.Close();
@@ -1244,7 +1405,7 @@ namespace WaterBallTool
                                             SWriteLine($"文件夹[{item.Name}]所在的路径[{outPath}{mRelativePath}]存在同名文件，无法写入", WriteTy.Warn);
                                         }
                                         else
-                                            SFiles(item.FilesList, $"{mRelativePath}\\{item.Name}", item, isSkipSubfiles, isOverwriteSubfiles, isRenameSubfolders);
+                                            SFiles(item.FilesList, mRelativePath, item, isSkipSubfiles, isOverwriteSubfiles, isRenameSubfolders);
                                     }
                                     else
                                     {
@@ -1615,6 +1776,7 @@ namespace WaterBallTool
                                                     outFileStream.Dispose();
                                                 }
                                             }
+                                            //获取数据位置
                                             long GetDataPosition(long dataWriteLength)
                                             {
                                                 if (isDataPositions)
@@ -1802,6 +1964,8 @@ namespace WaterBallTool
                                         THVWriteLine($"文件{mRelativePath}未存储哈希值，无法进行哈希验证。", WriteTy.Warn);
                                         break;
                                     }
+                                    //是否分块
+                                    bool isDataPositions = item.DataPositions.Count > 0;
                                     //当前文件的包文件数据起始位置
                                     long dataStartPosition = filesPackData.Attribute.FileDataStartPosition + item.DataStartPosition;
                                     //当前文件读取长度
@@ -1819,10 +1983,39 @@ namespace WaterBallTool
                                     {
                                         int ReadLength = dataBytes.Length;
                                         //防止过度读取
-                                        if (item.Length - dataReadLength < dataBytes.Length)
+                                        //分块处理
+                                        if (isDataPositions)
                                         {
-                                            ReadLength = (int)(item.Length - dataReadLength);
+                                            //分块
+                                            long length = 0;
+                                            foreach (var pos in item.DataPositions)
+                                            {
+                                                if (dataReadLength < (length + pos[1]))
+                                                {
+                                                    //当前分块剩余大小
+                                                    long posRemainLength = (length + pos[1]) - dataReadLength;
+                                                    if (posRemainLength < ReadLength)
+                                                    {
+                                                        ReadLength = (int)posRemainLength;
+                                                    }
+                                                    break;
+                                                }
+                                                else
+                                                {
+                                                    length += pos[1];
+                                                }
+                                            }
                                         }
+                                        else
+                                        {
+                                            //防止过度读取
+                                            if (item.Length - dataReadLength < dataBytes.Length)
+                                            {
+                                                ReadLength = (int)(item.Length - dataReadLength);
+                                            }
+                                        }
+                                        //设置包文件指针位置
+                                        fileStream.Position = GetDataPosition(dataReadLength);
                                         int ReadLength2 = fileStream.Read(dataBytes, 0, ReadLength);
                                         //判断是否读取到头
                                         if (ReadLength2 <= 0)
@@ -1852,7 +2045,32 @@ namespace WaterBallTool
                                     }
                                     //验证
                                     if (fileHashStr.Equals(item.Hash)) { /*THVWriteLine($"[通过]{item.RelativePath}");*/ } else { THVWriteLine($"[不一致]{mRelativePath}", WriteTy.Warn); }
-
+                                    //获取数据位置
+                                    long GetDataPosition(long dataWriteLength)
+                                    {
+                                        if (isDataPositions)
+                                        {
+                                            //分块
+                                            long length = 0;
+                                            foreach (var pos in item.DataPositions)
+                                            {
+                                                if (dataWriteLength < (length + pos[1]))
+                                                {
+                                                    return (pos[0] + (dataWriteLength - length)) + filesPackData.Attribute.FileDataStartPosition;
+                                                }
+                                                else
+                                                {
+                                                    length += pos[1];
+                                                }
+                                            }
+                                            return -1;//理论上不会到这里
+                                        }
+                                        else
+                                        {
+                                            //未分块
+                                            return filesPackData.Attribute.FileDataStartPosition + item.DataStartPosition + dataWriteLength;
+                                        }
+                                    }
                                     //计算进度
                                     UpdateProgress(mRelativePath);
                                     void UpdateProgress(string  relativePath)
