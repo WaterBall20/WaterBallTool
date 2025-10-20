@@ -616,10 +616,14 @@ namespace WaterBallTool
                             }
                             
                             fileStream.Flush();
-                            MWriteLine("开始写入数据");
 
+                            //分配包文件大小
+                            long fileLengthNeeded = filesPackData.Attribute.FileDataStartPosition + filesList.DataLength;
+                            MWriteLine($"分配磁盘空间:{DataLengthToString(fileLengthNeeded)}");
+                            fileStream.SetLength(fileLengthNeeded);
+                            MWriteLine("开始写入数据");
                             //数据缓存
-                            byte[] dataBytes = new byte[1024 * 31];
+                            byte[] dataBytes = new byte[dataBytesLength];
 
                             //写入优化专用
                             //数据缓存2，包数据
@@ -981,6 +985,12 @@ namespace WaterBallTool
                     //释放数组
                     jsonDataByte = [];
                     fileStream.Flush();
+
+                    //分配包文件大小
+                    long fileLengthNeeded = filesPackData.Attribute.FileDataStartPosition + filesList.DataLength;
+                    MWriteLine($"分配磁盘空间:{DataLengthToString(fileLengthNeeded)}");
+                    fileStream.SetLength(fileLengthNeeded);
+
                     MWriteLine("开始写入数据");
 
                     //数据缓存
@@ -988,6 +998,9 @@ namespace WaterBallTool
 
                     //当前已处理文件数
                     int inFilesIndex = 0;
+
+                    //当前已处理数据大小
+                    long inDataLength = 0;
                     MFiles(filesList.FilesList, "");
                     void MFiles(List<WBFileInfo> filesList2, string relativePath)
                     {
@@ -1067,6 +1080,7 @@ namespace WaterBallTool
                                             }
                                             fileStream.Write(dataBytes, 0, ReadLength2);
                                             dataWriteLength += ReadLength2;
+                                            inDataLength += ReadLength2;
                                             fileStream.Flush();
                                             //哈希计算
                                             if (onHash) sHA256.TransformBlock(dataBytes, 0, ReadLength, null, 0);
@@ -1121,9 +1135,8 @@ namespace WaterBallTool
 
                     void UpdateProgress(WBFileInfo item, string relativePath)
                     {
-                        long PackDataLength = fileStream.Length - (FileHeader.LongLength + jsonDataByte.LongLength);
-                        double Progress = (double)PackDataLength * 100 / (double)filesList.DataLength;
-                        MWriteLine($"数据：{DataLengthToString(PackDataLength)}/{DataLengthToString(filesList.DataLength)}|文件({inFilesIndex}/{filesList.FilesCount})：{relativePath}", Ty: WriteTy.Progress, Progress: Math.Round(Progress, 2));
+                        double Progress = (double)inDataLength * 100 / (double)filesList.DataLength;
+                        MWriteLine($"数据：{DataLengthToString(inDataLength)}/{DataLengthToString(filesList.DataLength)}|文件({inFilesIndex}/{filesList.FilesCount})：{relativePath}", Ty: WriteTy.Progress, Progress: Math.Round(Progress, 2));
                     }
 
                     void DataLength(List<WBFileInfo> WBFilesList)
@@ -1377,7 +1390,7 @@ namespace WaterBallTool
 
                             //写入优化专用
                             //数据缓存2，包数据
-                            byte[] dataBytes2 = new byte[1024 * 32];
+                            byte[] dataBytes2 = new byte[dataBytesLength];
                             //数据缓存3，目标文件数据
                             byte[] dataBytes3 = new byte[dataBytes2.Length];
 
